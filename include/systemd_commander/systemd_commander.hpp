@@ -75,6 +75,7 @@ private:
   void draw();
   void draw_unit_list(int top, int left, int bottom, int right);
   void draw_detail_popup(int rows, int columns);
+  void draw_help_popup(int rows, int columns) const;
   void draw_editor(int top, int left, int bottom, int right);
   void draw_status_line(int row, int columns) const;
   void draw_help_line(int row, int columns) const;
@@ -96,6 +97,8 @@ private:
   int editor_scroll_column_{0};
   int detail_scroll_{0};
   bool detail_popup_open_{false};
+  std::string help_popup_title_;
+  bool help_popup_open_{false};
   tui::TerminalPane terminal_pane_;
 };
 

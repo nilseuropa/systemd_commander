@@ -52,6 +52,14 @@ using tui::start_search;
 using tui::theme_attr;
 using tui::truncate_text;
 
+#ifndef SYSTEMD_COMMANDER_VERSION
+#define SYSTEMD_COMMANDER_VERSION "1.1.0"
+#endif
+
+std::string make_help_popup_title() {
+  return "SystemD Commander v." + std::string(SYSTEMD_COMMANDER_VERSION);
+}
+
 int unit_state_color(const SystemdUnitSummary & unit, bool selected) {
   if (selected) {
     return kColorSelection;
@@ -150,7 +158,8 @@ std::string trim(std::string text) {
 SystemdCommanderScreen::SystemdCommanderScreen(
   std::shared_ptr<SystemdCommanderBackend> backend, bool embedded_mode)
 : backend_(std::move(backend)),
-  embedded_mode_(embedded_mode) {}
+  embedded_mode_(embedded_mode),
+  help_popup_title_(make_help_popup_title()) {}
 
 int SystemdCommanderScreen::run() {
   std::unique_ptr<Session> ncurses_session;
@@ -195,6 +204,26 @@ int SystemdCommanderScreen::run() {
 }
 
 bool SystemdCommanderScreen::handle_key(int key) {
+  if (help_popup_open_) {
+    switch (key) {
+      case KEY_F(10):
+        return false;
+      case 27:
+      case '\n':
+      case KEY_ENTER:
+      case KEY_F(1):
+        help_popup_open_ = false;
+        return true;
+      default:
+        return true;
+    }
+  }
+
+  if (!editor_open_ && key == KEY_F(1)) {
+    help_popup_open_ = true;
+    return true;
+  }
+
   if (is_alt_binding(key, 't')) {
     search_state_.active = false;
     terminal_pane_.toggle();
@@ -891,6 +920,9 @@ void SystemdCommanderScreen::draw() {
   if (!editor_open_ && detail_popup_open_) {
     draw_detail_popup(layout.pane_rows, columns);
   }
+  if (!editor_open_ && help_popup_open_) {
+    draw_help_popup(layout.pane_rows, columns);
+  }
   if (terminal_pane_.visible()) {
     terminal_pane_.draw(layout.terminal_top, 0, rows - 1, columns - 1);
   }
@@ -950,6 +982,59 @@ void SystemdCommanderScreen::draw_unit_list(int top, int left, int bottom, int r
   for (; row_y <= bottom; ++row_y) {
     mvhline(row_y, left, ' ', width);
   }
+}
+
+void SystemdCommanderScreen::draw_help_popup(int rows, int columns) const {
+  const int popup_height = 16;
+  if (rows < popup_height || columns < 36) {
+    return;
+  }
+
+  const int popup_width = std::min(columns - 4, 76);
+  const int popup_left = std::max(2, (columns - popup_width) / 2);
+  const int popup_top = std::max(1, (rows - popup_height) / 2);
+  const int popup_right = popup_left + popup_width - 1;
+  const int popup_bottom = popup_top + popup_height - 1;
+  const int inner_width = popup_width - 2;
+
+  attron(theme_attr(kColorPopup));
+  for (int row = popup_top + 1; row < popup_bottom; ++row) {
+    mvhline(row, popup_left + 1, ' ', inner_width);
+  }
+  attroff(theme_attr(kColorPopup));
+  draw_box(popup_top, popup_left, popup_bottom, popup_right, kColorFrame);
+
+  attron(theme_attr(kColorHeader));
+  const std::string popup_title = help_popup_title_ + " ";
+  mvaddnstr(popup_top, popup_left + 2, popup_title.c_str(), std::max(0, popup_width - 4));
+  attroff(theme_attr(kColorHeader));
+
+  const int text_left = popup_left + 2;
+  const int text_width = popup_width - 4;
+  constexpr int key_width = 12;
+  auto draw_help_item = [&](int row, const std::string & key, const std::string & description) {
+    mvhline(row, text_left, ' ', text_width);
+    attron(theme_attr(kColorPopup) | A_BOLD);
+    mvprintw(row, text_left, "%-*s", key_width, key.c_str());
+    attroff(theme_attr(kColorPopup) | A_BOLD);
+    attron(theme_attr(kColorPopup));
+    mvaddnstr(row, text_left + key_width, description.c_str(), std::max(0, text_width - key_width));
+    attroff(theme_attr(kColorPopup));
+  };
+
+  draw_help_item(popup_top + 2, "Up/Down", "move through service units");
+  draw_help_item(popup_top + 3, "Enter", "open selected service details");
+  draw_help_item(popup_top + 4, "F2", "start selected service");
+  draw_help_item(popup_top + 5, "F3", "stop selected service");
+  draw_help_item(popup_top + 6, "F4", "refresh service list");
+  draw_help_item(popup_top + 7, "F5", "restart selected service");
+  draw_help_item(popup_top + 8, "F6", "reload selected service");
+  draw_help_item(popup_top + 9, "F7", "edit selected unit file from details");
+  draw_help_item(popup_top + 10, "F9", "open logs for selected service");
+  draw_help_item(popup_top + 11, "Alt+S", "search service list");
+  draw_help_item(popup_top + 12, "Alt+T", "toggle terminal");
+  draw_help_item(popup_top + 13, "F10", "exit");
+  draw_help_item(popup_top + 14, "Esc/F1", "close help");
 }
 
 void SystemdCommanderScreen::draw_detail_popup(int rows, int columns) {
@@ -1126,7 +1211,7 @@ void SystemdCommanderScreen::draw_help_line(int row, int columns) const {
     row,
     columns,
     tui::with_terminal_help(
-      "Up/Down Move  Enter Details  F2 Start  F3 Stop  F4 Refresh  F5 Restart  F6 Reload  F9 Logs  Alt+S Search  F10 Exit",
+      "F1 Help  Enter Details  F2 Start  F3 Stop  F4 Refresh  F5 Restart  F6 Reload  F9 Logs  Alt+S Search  F10 Exit",
       terminal_pane_.visible()));
 }
 
