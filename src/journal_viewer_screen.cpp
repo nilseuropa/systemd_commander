@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace systemd_commander {
@@ -47,6 +48,24 @@ using tui::start_search;
 using tui::theme_attr;
 using tui::truncate_text;
 
+#ifndef SYSTEMD_COMMANDER_VERSION
+#define SYSTEMD_COMMANDER_VERSION "1.1.0"
+#endif
+
+std::string make_help_popup_title() {
+  return "SystemD Commander v." + std::string(SYSTEMD_COMMANDER_VERSION);
+}
+
+std::string namespace_option_label(const std::string & namespace_name) {
+  if (namespace_name.empty()) {
+    return "<default>";
+  }
+  if (namespace_name == "*") {
+    return "* (all namespaces)";
+  }
+  return namespace_name;
+}
+
 int journal_row_color(int priority, bool selected) {
   if (selected) {
     return kColorSelection;
@@ -78,7 +97,8 @@ std::string short_timestamp(const std::string & timestamp) {
 JournalViewerScreen::JournalViewerScreen(
   std::shared_ptr<JournalViewerBackend> backend, bool embedded_mode)
 : backend_(std::move(backend)),
-  embedded_mode_(embedded_mode) {}
+  embedded_mode_(embedded_mode),
+  help_popup_title_(make_help_popup_title()) {}
 
 int JournalViewerScreen::run() {
   std::unique_ptr<Session> ncurses_session;
@@ -106,7 +126,12 @@ int JournalViewerScreen::run() {
     draw();
     const int key = getch();
     if (key == ERR) {
-      if (prompt_mode_ == PromptMode::None && !search_state_.active) {
+      if (
+        prompt_mode_ == PromptMode::None &&
+        !namespace_picker_open_ &&
+        !help_popup_open_ &&
+        !search_state_.active)
+      {
         backend_->maybe_poll_live_updates();
       }
       continue;
@@ -126,8 +151,32 @@ int JournalViewerScreen::run() {
 }
 
 bool JournalViewerScreen::handle_key(int key) {
+  if (help_popup_open_) {
+    switch (key) {
+      case KEY_F(10):
+        return false;
+      case 27:
+      case '\n':
+      case KEY_ENTER:
+      case KEY_F(1):
+        help_popup_open_ = false;
+        return true;
+      default:
+        return true;
+    }
+  }
+
   if (prompt_mode_ != PromptMode::None) {
     return handle_filter_prompt_key(key);
+  }
+
+  if (namespace_picker_open_) {
+    return handle_namespace_picker_key(key);
+  }
+
+  if (key == KEY_F(1)) {
+    help_popup_open_ = true;
+    return true;
   }
 
   if (is_alt_binding(key, 't')) {
@@ -177,7 +226,21 @@ bool JournalViewerScreen::handle_key(int key) {
         std::lock_guard<std::mutex> lock(backend_->mutex_);
         prompt_buffer_ = backend_->namespace_filter_;
       }
-      prompt_mode_ = PromptMode::Namespace;
+      {
+        std::string error;
+        namespace_options_ = backend_->namespace_options_snapshot(&error);
+        namespace_picker_selected_index_ = 0;
+        const auto found = std::find(namespace_options_.begin(), namespace_options_.end(), prompt_buffer_);
+        if (found != namespace_options_.end()) {
+          namespace_picker_selected_index_ =
+            static_cast<int>(std::distance(namespace_options_.begin(), found));
+        }
+        if (!error.empty()) {
+          std::lock_guard<std::mutex> lock(backend_->mutex_);
+          backend_->status_line_ = error;
+        }
+      }
+      namespace_picker_open_ = true;
       return true;
     case '\n':
     case KEY_ENTER:
@@ -277,6 +340,45 @@ bool JournalViewerScreen::handle_filter_prompt_key(int key) {
       if (key >= 32 && key <= 126) {
         prompt_buffer_.push_back(static_cast<char>(key));
       }
+      return true;
+  }
+}
+
+bool JournalViewerScreen::handle_namespace_picker_key(int key) {
+  switch (key) {
+    case KEY_F(10):
+      return false;
+    case 27:
+      namespace_picker_open_ = false;
+      return true;
+    case KEY_UP:
+    case 'k':
+      namespace_picker_selected_index_ = std::max(0, namespace_picker_selected_index_ - 1);
+      return true;
+    case KEY_DOWN:
+    case 'j':
+      namespace_picker_selected_index_ = std::min(
+        static_cast<int>(namespace_options_.size()) - 1,
+        namespace_picker_selected_index_ + 1);
+      return true;
+    case '\n':
+    case KEY_ENTER:
+      if (
+        namespace_picker_selected_index_ >= 0 &&
+        namespace_picker_selected_index_ < static_cast<int>(namespace_options_.size()))
+      {
+        namespace_picker_open_ = false;
+        detail_scroll_ = 0;
+        backend_->set_namespace_filter(namespace_options_[static_cast<std::size_t>(
+          namespace_picker_selected_index_)]);
+      }
+      return true;
+    case 'e':
+    case 'E':
+      namespace_picker_open_ = false;
+      prompt_mode_ = PromptMode::Namespace;
+      return true;
+    default:
       return true;
   }
 }
@@ -403,8 +505,14 @@ void JournalViewerScreen::draw() {
   if (prompt_mode_ != PromptMode::None) {
     draw_filter_popup(layout.pane_rows, columns);
   }
+  if (namespace_picker_open_) {
+    draw_namespace_picker_popup(layout.pane_rows, columns);
+  }
   if (detail_popup_open_) {
     draw_detail_popup(layout.pane_rows, columns);
+  }
+  if (help_popup_open_) {
+    draw_help_popup(layout.pane_rows, columns);
   }
   if (terminal_pane_.visible()) {
     terminal_pane_.draw(layout.terminal_top, 0, rows - 1, columns - 1);
@@ -464,6 +572,118 @@ void JournalViewerScreen::draw_entry_list(int top, int left, int bottom, int rig
   for (; row_y <= bottom; ++row_y) {
     mvhline(row_y, left, ' ', width);
   }
+}
+
+void JournalViewerScreen::draw_help_popup(int rows, int columns) const {
+  const int popup_height = 15;
+  if (rows < popup_height || columns < 36) {
+    return;
+  }
+
+  const int popup_width = std::min(columns - 4, 76);
+  const int popup_left = std::max(2, (columns - popup_width) / 2);
+  const int popup_top = std::max(1, (rows - popup_height) / 2);
+  const int popup_right = popup_left + popup_width - 1;
+  const int popup_bottom = popup_top + popup_height - 1;
+  const int inner_width = popup_width - 2;
+
+  attron(theme_attr(kColorPopup));
+  for (int row = popup_top + 1; row < popup_bottom; ++row) {
+    mvhline(row, popup_left + 1, ' ', inner_width);
+  }
+  attroff(theme_attr(kColorPopup));
+  draw_box(popup_top, popup_left, popup_bottom, popup_right, kColorFrame);
+
+  attron(theme_attr(kColorHeader));
+  const std::string popup_title = help_popup_title_ + " ";
+  mvaddnstr(popup_top, popup_left + 2, popup_title.c_str(), std::max(0, popup_width - 4));
+  attroff(theme_attr(kColorHeader));
+
+  const int text_left = popup_left + 2;
+  const int text_width = popup_width - 4;
+  constexpr int key_width = 12;
+  auto draw_help_item = [&](int row, const std::string & key, const std::string & description) {
+    mvhline(row, text_left, ' ', text_width);
+    attron(theme_attr(kColorPopup) | A_BOLD);
+    mvprintw(row, text_left, "%-*s", key_width, key.c_str());
+    attroff(theme_attr(kColorPopup) | A_BOLD);
+    attron(theme_attr(kColorPopup));
+    mvaddnstr(row, text_left + key_width, description.c_str(), std::max(0, text_width - key_width));
+    attroff(theme_attr(kColorPopup));
+  };
+
+  draw_help_item(popup_top + 2, "Up/Down", "move through journal entries");
+  draw_help_item(popup_top + 3, "Enter", "open selected entry details");
+  draw_help_item(popup_top + 4, "F2", "toggle live refresh");
+  draw_help_item(popup_top + 5, "F4", "refresh entries");
+  draw_help_item(popup_top + 6, "F5", "cycle priority filter");
+  draw_help_item(popup_top + 7, "F6", "edit text filter");
+  draw_help_item(popup_top + 8, "F7", "choose journal namespace");
+  draw_help_item(popup_top + 9, "Alt+S", "search entries");
+  draw_help_item(popup_top + 10, "Alt+T", "toggle terminal");
+  draw_help_item(popup_top + 11, "F10", "exit");
+  draw_help_item(popup_top + 12, "Esc/F1", "close help");
+}
+
+void JournalViewerScreen::draw_namespace_picker_popup(int rows, int columns) const {
+  if (rows < 9 || columns < 36) {
+    return;
+  }
+
+  const int popup_width = std::min(columns - 4, 64);
+  const int popup_height = std::min(rows - 2, std::max(9, static_cast<int>(namespace_options_.size()) + 4));
+  const int popup_left = std::max(2, (columns - popup_width) / 2);
+  const int popup_top = std::max(1, (rows - popup_height) / 2);
+  const int popup_right = popup_left + popup_width - 1;
+  const int popup_bottom = popup_top + popup_height - 1;
+  const int inner_width = popup_width - 2;
+
+  attron(theme_attr(kColorPopup));
+  for (int row = popup_top + 1; row < popup_bottom; ++row) {
+    mvhline(row, popup_left + 1, ' ', inner_width);
+  }
+  attroff(theme_attr(kColorPopup));
+  draw_box(popup_top, popup_left, popup_bottom, popup_right, kColorFrame);
+
+  attron(theme_attr(kColorHeader));
+  mvaddnstr(popup_top, popup_left + 2, " Journal Namespace ", std::max(0, popup_width - 4));
+  attroff(theme_attr(kColorHeader));
+
+  std::string current_namespace;
+  {
+    std::lock_guard<std::mutex> lock(backend_->mutex_);
+    current_namespace = backend_->namespace_filter_;
+  }
+
+  const int option_top = popup_top + 1;
+  const int option_rows = std::max(1, popup_height - 4);
+  int first_option = 0;
+  if (namespace_picker_selected_index_ >= option_rows) {
+    first_option = namespace_picker_selected_index_ - option_rows + 1;
+  }
+  const int last_option = std::min(
+    static_cast<int>(namespace_options_.size()), first_option + option_rows);
+  int row_y = option_top;
+  for (int index = first_option; index < last_option; ++index, ++row_y) {
+    const std::string & value = namespace_options_[static_cast<std::size_t>(index)];
+    std::string label = namespace_option_label(value);
+    if (value == current_namespace) {
+      label += "  current";
+    }
+    mvhline(row_y, popup_left + 1, ' ', inner_width);
+    mvaddnstr(row_y, popup_left + 2, truncate_text(label, popup_width - 4).c_str(), popup_width - 4);
+    if (index == namespace_picker_selected_index_) {
+      apply_role_chgat(row_y, popup_left + 1, inner_width, kColorSelection);
+    }
+  }
+
+  attron(theme_attr(kColorHeader));
+  mvaddnstr(
+    popup_bottom - 1,
+    popup_left + 2,
+    "Enter Select  E Edit  Esc Close",
+    std::max(0, popup_width - 4));
+  attroff(theme_attr(kColorHeader));
 }
 
 void JournalViewerScreen::draw_detail_popup(int total_rows, int total_columns) {
@@ -560,7 +780,7 @@ void JournalViewerScreen::draw_help_line(int row, int columns) const {
     row,
     columns,
     tui::with_terminal_help(
-      "Up/Down Move  Enter Details  F2 Live:" + std::string(live_mode ? "On" : "Off") +
+      "F1 Help  Enter Details  F2 Live:" + std::string(live_mode ? "On" : "Off") +
       "  F4 Refresh  F5 Priority:" + priority_label +
       "  F6 Text Filter  F7 Namespace  Alt+S Search  F10 Exit",
       terminal_pane_.visible()));

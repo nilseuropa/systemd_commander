@@ -34,6 +34,9 @@ std::string build_status_line(
   if (!text_filter.empty()) {
     status += "  filter=" + text_filter;
   }
+  if (entry_count == 0 && !unit_filter.empty() && namespace_filter.empty()) {
+    status += "  F7 namespace, or choose * for all";
+  }
   return status;
 }
 
@@ -180,6 +183,34 @@ bool JournalViewerBackend::live_mode_enabled() const {
 std::string JournalViewerBackend::priority_filter_label() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return journal_priority_label(max_priority_);
+}
+
+std::vector<std::string> JournalViewerBackend::namespace_options_snapshot(std::string * error) const {
+  std::string current_namespace;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    current_namespace = namespace_filter_;
+  }
+
+  std::vector<std::string> options = {"", "*"};
+  if (!current_namespace.empty() && current_namespace != "*") {
+    options.push_back(current_namespace);
+  }
+
+  std::vector<std::string> discovered_namespaces = client_.list_namespaces(error);
+  options.insert(options.end(), discovered_namespaces.begin(), discovered_namespaces.end());
+  std::sort(options.begin(), options.end());
+  options.erase(std::unique(options.begin(), options.end()), options.end());
+
+  const auto default_option = std::find(options.begin(), options.end(), "");
+  if (default_option != options.end()) {
+    std::rotate(options.begin(), default_option, default_option + 1);
+  }
+  const auto all_option = std::find(options.begin(), options.end(), "*");
+  if (all_option != options.end() && all_option != options.begin()) {
+    std::rotate(options.begin() + 1, all_option, all_option + 1);
+  }
+  return options;
 }
 
 std::vector<JournalDetailRow> JournalViewerBackend::detail_rows_snapshot() const {

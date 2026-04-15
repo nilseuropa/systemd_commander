@@ -77,6 +77,19 @@ TEST(JournalClientParseTest, DecodesEscapesAndSkipsInvalidLines) {
   EXPECT_EQ(entries[0].message, "Line one\nLine two with \"quote\" and unicode ä");
 }
 
+TEST(JournalClientParseTest, ParsesJournalNamespaceUnits) {
+  const std::string output =
+    "systemd-journald@robot.service loaded active running Journal Service for robot\n"
+    "systemd-journald@camera.service loaded inactive dead Journal Service for camera\n"
+    "systemd-journald.service loaded active running Journal Service\n"
+    "unrelated.service loaded active running Unrelated\n";
+
+  const auto namespaces = parse_journal_namespace_units_output(output);
+  ASSERT_EQ(namespaces.size(), 2u);
+  EXPECT_EQ(namespaces[0], "camera");
+  EXPECT_EQ(namespaces[1], "robot");
+}
+
 TEST(JournalClientParseTest, OmitsLineLimitForFullSnapshotRequests) {
   char temp_directory_template[] = "/tmp/systemd_commander_journal_client_test_XXXXXX";
   const char * temp_directory = mkdtemp(temp_directory_template);

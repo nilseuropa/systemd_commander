@@ -6,6 +6,7 @@
 #include <ctime>
 #include <iomanip>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -290,6 +291,23 @@ bool entry_matches_filter(const JournalEntry & entry, const std::string & filter
   return haystack.find(needle) != std::string::npos;
 }
 
+std::string parse_namespace_unit_name(const std::string & unit_name) {
+  constexpr const char * kPrefix = "systemd-journald@";
+  constexpr const char * kSuffix = ".service";
+  const std::string prefix(kPrefix);
+  const std::string suffix(kSuffix);
+  if (unit_name.size() <= prefix.size() + suffix.size()) {
+    return "";
+  }
+  if (unit_name.compare(0, prefix.size(), prefix) != 0) {
+    return "";
+  }
+  if (unit_name.compare(unit_name.size() - suffix.size(), suffix.size(), suffix) != 0) {
+    return "";
+  }
+  return unit_name.substr(prefix.size(), unit_name.size() - prefix.size() - suffix.size());
+}
+
 }  // namespace
 
 std::string journal_priority_label(int priority) {
@@ -346,6 +364,29 @@ std::vector<JournalEntry> parse_journal_json_lines(const std::string & text) {
   return entries;
 }
 
+std::vector<std::string> parse_journal_namespace_units_output(const std::string & text) {
+  std::set<std::string> namespaces;
+  std::istringstream stream(text);
+  std::string line;
+  while (std::getline(stream, line)) {
+    line = trim(line);
+    if (line.empty()) {
+      continue;
+    }
+
+    std::istringstream line_stream(line);
+    std::string unit_name;
+    if (!(line_stream >> unit_name)) {
+      continue;
+    }
+    const std::string namespace_name = parse_namespace_unit_name(unit_name);
+    if (!namespace_name.empty()) {
+      namespaces.insert(namespace_name);
+    }
+  }
+  return {namespaces.begin(), namespaces.end()};
+}
+
 std::vector<JournalEntry> JournalClient::read_entries(
   const std::string & unit_filter,
   const std::string & namespace_filter,
@@ -392,6 +433,25 @@ std::vector<JournalEntry> JournalClient::read_entries(
     }
   }
   return filtered_entries;
+}
+
+std::vector<std::string> JournalClient::list_namespaces(std::string * error) const {
+  const ProcessResult result = run_process({
+      "systemctl",
+      "list-units",
+      "systemd-journald@*.service",
+      "--all",
+      "--plain",
+      "--no-legend",
+      "--no-pager",
+      "--full"});
+  if (!result.succeeded()) {
+    if (error != nullptr) {
+      *error = result.output.empty() ? "systemctl list-units failed." : trim(result.output);
+    }
+    return {};
+  }
+  return parse_journal_namespace_units_output(result.output);
 }
 
 }  // namespace systemd_commander

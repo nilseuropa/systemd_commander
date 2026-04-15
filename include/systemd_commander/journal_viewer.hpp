@@ -42,6 +42,7 @@ private:
   void toggle_live_mode();
   bool live_mode_enabled() const;
   std::string priority_filter_label() const;
+  std::vector<std::string> namespace_options_snapshot(std::string * error = nullptr) const;
   std::vector<JournalDetailRow> detail_rows_snapshot() const;
 
   mutable std::mutex mutex_;
@@ -70,11 +71,14 @@ private:
   bool handle_key(int key);
   bool handle_search_key(int key);
   bool handle_filter_prompt_key(int key);
+  bool handle_namespace_picker_key(int key);
   bool handle_entry_list_key(int key);
   bool handle_detail_popup_key(int key);
   int page_step() const;
   void draw();
   void draw_entry_list(int top, int left, int bottom, int right);
+  void draw_help_popup(int rows, int columns) const;
+  void draw_namespace_picker_popup(int rows, int columns) const;
   void draw_detail_popup(int rows, int columns);
   void draw_filter_popup(int rows, int columns) const;
   void draw_status_line(int row, int columns) const;
@@ -82,9 +86,14 @@ private:
 
   std::shared_ptr<JournalViewerBackend> backend_;
   bool embedded_mode_{false};
+  std::string help_popup_title_;
   tui::SearchState search_state_;
   int detail_scroll_{0};
   bool detail_popup_open_{false};
+  bool help_popup_open_{false};
+  bool namespace_picker_open_{false};
+  int namespace_picker_selected_index_{0};
+  std::vector<std::string> namespace_options_;
   enum class PromptMode { None, TextFilter, Namespace };
   PromptMode prompt_mode_{PromptMode::None};
   std::string prompt_buffer_;

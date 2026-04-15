@@ -5,7 +5,7 @@
 ## Included Tools
 
 - `systemd_commander`: browse service units, inspect details, start/stop/restart/reload units, edit unit files, and jump into logs
-- `journal_viewer`: browse journal entries with live refresh, priority filtering, text filtering, and detail popups
+- `journal_viewer`: browse journal entries with live refresh, priority filtering, text filtering, namespace selection, and detail popups
 
 ## Screenshots
 
@@ -60,9 +60,11 @@ Launch the tools directly from the build tree:
 ```bash
 ./build/systemd_commander
 ./build/journal_viewer
+./build/systemd_commander --version
+./build/journal_viewer --version
 ```
 
-Optional unit preselection:
+Optional filters:
 
 ```bash
 ./build/systemd_commander --unit ssh.service
@@ -74,6 +76,7 @@ Optional unit preselection:
 
 Common keys:
 
+- `F1`: help
 - `F10`: exit
 - `Enter`: inspect or open the selected item
 - `Esc`: close the current popup or return
@@ -83,8 +86,12 @@ Common keys:
 
 Tool-specific highlights:
 
-- `systemd_commander`: `F2` start, `F3` stop, `F5` restart, `F6` reload, `F7` edit unit file, `F9` open logs
-- `journal_viewer`: `F2` toggle live/snapshot mode, `F5` cycle priority filter, `F6` text filter, `F7` namespace
+- `systemd_commander`: `F2` start, `F3` stop, `F5` restart, `F6` reload, `F7` edit unit file from details, `F9` open logs
+- `journal_viewer`: `F2` toggle live/snapshot mode, `F5` cycle priority filter, `F6` text filter, `F7` namespace picker
+
+The journal namespace picker includes the default namespace, `*` for all namespaces, and
+namespaces discovered from `systemd-journald@*.service`. Press `E` in the picker to enter
+a namespace manually.
 
 ## Theme Configuration
 
@@ -106,3 +113,5 @@ At runtime the theme lookup order is:
 - Privileged operations are requested on demand instead of requiring the whole UI to run as `root`.
 - `systemd_commander` opens `journal_viewer` in embedded mode for the selected unit on `F9`;
   if the unit exposes `LogNamespace`, that namespace is applied automatically.
+- If a unit-filtered journal view has no entries in the default namespace, the status line suggests
+  using `F7` or `*` to check other journal namespaces.

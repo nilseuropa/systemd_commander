@@ -22,6 +22,7 @@ struct JournalEntry {
 
 std::string journal_priority_label(int priority);
 std::vector<JournalEntry> parse_journal_json_lines(const std::string & text);
+std::vector<std::string> parse_journal_namespace_units_output(const std::string & text);
 
 class JournalClient {
 public:
@@ -32,6 +33,7 @@ public:
     int line_count,
     const std::string & text_filter,
     std::string * error = nullptr) const;
+  std::vector<std::string> list_namespaces(std::string * error = nullptr) const;
 };
 
 }  // namespace systemd_commander

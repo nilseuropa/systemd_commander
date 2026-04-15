@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(systemd_commander VERSION 1.1.0 LANGUAGES CXX)
+project(systemd_commander VERSION 1.2.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -45,6 +45,9 @@ target_link_libraries(journal_viewer_lib PUBLIC
   systemd_commander_common
   systemd_commander_tui
 )
+target_compile_definitions(journal_viewer_lib PRIVATE
+  SYSTEMD_COMMANDER_VERSION="${PROJECT_VERSION}"
+)
 
 add_library(systemd_commander_lib
   src/systemd_commander_backend.cpp
@@ -62,9 +65,15 @@ target_compile_definitions(systemd_commander_lib PRIVATE
 
 add_executable(systemd_commander src/systemd_commander.cpp)
 target_link_libraries(systemd_commander PRIVATE systemd_commander_lib)
+target_compile_definitions(systemd_commander PRIVATE
+  SYSTEMD_COMMANDER_VERSION="${PROJECT_VERSION}"
+)
 
 add_executable(journal_viewer src/journal_viewer.cpp)
 target_link_libraries(journal_viewer PRIVATE journal_viewer_lib)
+target_compile_definitions(journal_viewer PRIVATE
+  SYSTEMD_COMMANDER_VERSION="${PROJECT_VERSION}"
+)
 
 install(TARGETS
   systemd_commander_common
