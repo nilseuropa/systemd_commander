@@ -107,7 +107,7 @@ bool SystemdClient::show_unit_details(
       "systemctl",
       "show",
       "--no-pager",
-      "--property=Id,Description,LoadState,ActiveState,SubState,UnitFileState,MainPID,ExecMainPID,FragmentPath,ExecStart,CanStart,CanStop,CanReload",
+      "--property=Id,Description,LoadState,ActiveState,SubState,UnitFileState,MainPID,ExecMainPID,FragmentPath,ExecStart,LogNamespace,CanStart,CanStop,CanReload",
       unit_name});
   if (!result.succeeded()) {
     if (error != nullptr) {

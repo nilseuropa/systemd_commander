@@ -348,6 +348,7 @@ std::vector<JournalEntry> parse_journal_json_lines(const std::string & text) {
 
 std::vector<JournalEntry> JournalClient::read_entries(
   const std::string & unit_filter,
+  const std::string & namespace_filter,
   int max_priority,
   int line_count,
   const std::string & text_filter,
@@ -365,6 +366,9 @@ std::vector<JournalEntry> JournalClient::read_entries(
   }
   if (!unit_filter.empty()) {
     command.push_back("--unit=" + unit_filter);
+  }
+  if (!namespace_filter.empty()) {
+    command.push_back("--namespace=" + namespace_filter);
   }
 
   const ProcessResult result = run_process(command);

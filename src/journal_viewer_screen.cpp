@@ -8,8 +8,12 @@
 
 namespace systemd_commander {
 
-int run_journal_viewer_tool(const std::string & initial_unit, bool embedded_mode) {
-  auto backend = std::make_shared<JournalViewerBackend>(initial_unit);
+int run_journal_viewer_tool(
+  const std::string & initial_unit,
+  bool embedded_mode,
+  const std::string & initial_namespace)
+{
+  auto backend = std::make_shared<JournalViewerBackend>(initial_unit, initial_namespace);
   JournalViewerScreen screen(backend, embedded_mode);
   return screen.run();
 }
@@ -102,7 +106,7 @@ int JournalViewerScreen::run() {
     draw();
     const int key = getch();
     if (key == ERR) {
-      if (!filter_prompt_open_ && !search_state_.active) {
+      if (prompt_mode_ == PromptMode::None && !search_state_.active) {
         backend_->maybe_poll_live_updates();
       }
       continue;
@@ -122,7 +126,7 @@ int JournalViewerScreen::run() {
 }
 
 bool JournalViewerScreen::handle_key(int key) {
-  if (filter_prompt_open_) {
+  if (prompt_mode_ != PromptMode::None) {
     return handle_filter_prompt_key(key);
   }
 
@@ -164,9 +168,16 @@ bool JournalViewerScreen::handle_key(int key) {
     case KEY_F(6):
       {
         std::lock_guard<std::mutex> lock(backend_->mutex_);
-        filter_buffer_ = backend_->text_filter_;
+        prompt_buffer_ = backend_->text_filter_;
       }
-      filter_prompt_open_ = true;
+      prompt_mode_ = PromptMode::TextFilter;
+      return true;
+    case KEY_F(7):
+      {
+        std::lock_guard<std::mutex> lock(backend_->mutex_);
+        prompt_buffer_ = backend_->namespace_filter_;
+      }
+      prompt_mode_ = PromptMode::Namespace;
       return true;
     case '\n':
     case KEY_ENTER:
@@ -243,24 +254,28 @@ bool JournalViewerScreen::handle_search_key(int key) {
 bool JournalViewerScreen::handle_filter_prompt_key(int key) {
   switch (key) {
     case 27:
-      filter_prompt_open_ = false;
+      prompt_mode_ = PromptMode::None;
       return true;
     case '\n':
     case KEY_ENTER:
-      filter_prompt_open_ = false;
       detail_scroll_ = 0;
-      backend_->set_text_filter(filter_buffer_);
+      if (prompt_mode_ == PromptMode::Namespace) {
+        backend_->set_namespace_filter(prompt_buffer_);
+      } else if (prompt_mode_ == PromptMode::TextFilter) {
+        backend_->set_text_filter(prompt_buffer_);
+      }
+      prompt_mode_ = PromptMode::None;
       return true;
     case KEY_BACKSPACE:
     case 127:
     case '\b':
-      if (!filter_buffer_.empty()) {
-        filter_buffer_.pop_back();
+      if (!prompt_buffer_.empty()) {
+        prompt_buffer_.pop_back();
       }
       return true;
     default:
       if (key >= 32 && key <= 126) {
-        filter_buffer_.push_back(static_cast<char>(key));
+        prompt_buffer_.push_back(static_cast<char>(key));
       }
       return true;
   }
@@ -385,7 +400,7 @@ void JournalViewerScreen::draw() {
   draw_status_line(status_row, columns);
   draw_help_line(help_row, columns);
   draw_search_box(layout.pane_rows, columns, search_state_);
-  if (filter_prompt_open_) {
+  if (prompt_mode_ != PromptMode::None) {
     draw_filter_popup(layout.pane_rows, columns);
   }
   if (detail_popup_open_) {
@@ -516,7 +531,7 @@ void JournalViewerScreen::draw_filter_popup(int rows, int columns) const {
   attroff(theme_attr(kColorPopup));
   draw_box(top, left, bottom, right, kColorFrame);
 
-  const std::string label = "Text Filter: ";
+  const std::string label = prompt_mode_ == PromptMode::Namespace ? "Namespace: " : "Text Filter: ";
   attron(theme_attr(kColorHeader));
   mvaddnstr(top + 1, left + 1, label.c_str(), inner_width);
   attroff(theme_attr(kColorHeader));
@@ -525,7 +540,7 @@ void JournalViewerScreen::draw_filter_popup(int rows, int columns) const {
   const int input_width = std::max(0, right - input_left);
   attron(theme_attr(kColorInput));
   mvhline(top + 1, input_left, ' ', input_width);
-  mvaddnstr(top + 1, input_left, truncate_text(filter_buffer_, input_width).c_str(), input_width);
+  mvaddnstr(top + 1, input_left, truncate_text(prompt_buffer_, input_width).c_str(), input_width);
   attroff(theme_attr(kColorInput));
 }
 
@@ -547,7 +562,7 @@ void JournalViewerScreen::draw_help_line(int row, int columns) const {
     tui::with_terminal_help(
       "Up/Down Move  Enter Details  F2 Live:" + std::string(live_mode ? "On" : "Off") +
       "  F4 Refresh  F5 Priority:" + priority_label +
-      "  F6 Text Filter  Alt+S Search  F10 Exit",
+      "  F6 Text Filter  F7 Namespace  Alt+S Search  F10 Exit",
       terminal_pane_.visible()));
 }
 

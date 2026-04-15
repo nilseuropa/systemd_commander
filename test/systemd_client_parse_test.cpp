@@ -37,6 +37,7 @@ TEST(SystemdClientParseTest, ParsesShowPropertiesAndActions) {
     "UnitFileState=enabled\n"
     "MainPID=1024\n"
     "ExecStart={ path=/usr/sbin/sshd ; argv[]=/usr/sbin/sshd -D }\n"
+    "LogNamespace=robot\n"
     "CanStart=yes\n"
     "CanStop=yes\n"
     "CanReload=no\n";
@@ -45,6 +46,7 @@ TEST(SystemdClientParseTest, ParsesShowPropertiesAndActions) {
   EXPECT_EQ(details.properties.at("Id"), "ssh.service");
   EXPECT_EQ(details.properties.at("Description"), "OpenBSD Secure Shell server");
   EXPECT_EQ(details.properties.at("ExecStart"), "{ path=/usr/sbin/sshd ; argv[]=/usr/sbin/sshd -D }");
+  EXPECT_EQ(details.properties.at("LogNamespace"), "robot");
   EXPECT_TRUE(details.can_start);
   EXPECT_TRUE(details.can_stop);
   EXPECT_FALSE(details.can_reload);

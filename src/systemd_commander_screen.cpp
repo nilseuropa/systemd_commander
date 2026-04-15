@@ -699,7 +699,7 @@ bool SystemdCommanderScreen::launch_selected_logs() {
     return true;
   }
 
-  (void)run_journal_viewer_tool(unit_name, true);
+  (void)run_journal_viewer_tool(unit_name, true, backend_->selected_log_namespace());
   return true;
 }
 

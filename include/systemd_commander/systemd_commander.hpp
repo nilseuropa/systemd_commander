@@ -33,6 +33,7 @@ private:
   void clamp_selection();
   std::string selected_unit_name() const;
   std::string selected_fragment_path() const;
+  std::string selected_log_namespace() const;
   std::vector<SystemdDetailRow> detail_rows_snapshot() const;
   bool perform_action(const std::string & action);
 

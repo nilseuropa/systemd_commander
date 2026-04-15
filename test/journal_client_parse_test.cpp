@@ -107,13 +107,14 @@ TEST(JournalClientParseTest, OmitsLineLimitForFullSnapshotRequests) {
   JournalClient client;
   std::string error;
 
-  const auto limited_entries = client.read_entries("", 6, 200, "", &error);
+  const auto limited_entries = client.read_entries("", "robot", 6, 200, "", &error);
   ASSERT_TRUE(error.empty());
   ASSERT_EQ(limited_entries.size(), 1u);
   const std::string limited_args = read_text_file(args_path);
   EXPECT_NE(limited_args.find("--lines=200"), std::string::npos);
+  EXPECT_NE(limited_args.find("--namespace=robot"), std::string::npos);
 
-  const auto full_entries = client.read_entries("", 6, 0, "", &error);
+  const auto full_entries = client.read_entries("", "", 6, 0, "", &error);
   ASSERT_TRUE(error.empty());
   ASSERT_EQ(full_entries.size(), 1u);
   const std::string full_args = read_text_file(args_path);

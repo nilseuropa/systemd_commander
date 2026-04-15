@@ -15,6 +15,7 @@ std::string entry_identity(const JournalEntry & entry) {
 std::string build_status_line(
   std::size_t entry_count,
   const std::string & unit_filter,
+  const std::string & namespace_filter,
   int max_priority,
   const std::string & text_filter,
   bool live_mode,
@@ -26,6 +27,9 @@ std::string build_status_line(
   if (!unit_filter.empty()) {
     status += " for " + unit_filter;
   }
+  if (!namespace_filter.empty()) {
+    status += "  namespace=" + namespace_filter;
+  }
   status += "  priority<=" + journal_priority_label(max_priority);
   if (!text_filter.empty()) {
     status += "  filter=" + text_filter;
@@ -35,8 +39,11 @@ std::string build_status_line(
 
 }  // namespace
 
-JournalViewerBackend::JournalViewerBackend(const std::string & initial_unit)
-: unit_filter_(initial_unit) {
+JournalViewerBackend::JournalViewerBackend(
+  const std::string & initial_unit,
+  const std::string & initial_namespace)
+: unit_filter_(initial_unit),
+  namespace_filter_(initial_namespace) {
   std::string theme_error;
   (void)tui::load_theme_from_file(tui::default_theme_config_path(), &theme_error);
   refresh_entries();
@@ -44,20 +51,29 @@ JournalViewerBackend::JournalViewerBackend(const std::string & initial_unit)
 
 void JournalViewerBackend::refresh_entries() {
   std::string previous_identity;
+  std::string unit_filter;
+  std::string namespace_filter;
+  std::string text_filter;
   bool live_mode = true;
+  int max_priority = 6;
   int requested_line_count = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!entries_.empty() && selected_index_ >= 0 && selected_index_ < static_cast<int>(entries_.size())) {
       previous_identity = entry_identity(entries_[static_cast<std::size_t>(selected_index_)]);
     }
+    unit_filter = unit_filter_;
+    namespace_filter = namespace_filter_;
+    text_filter = text_filter_;
     live_mode = live_mode_;
+    max_priority = max_priority_;
     requested_line_count = live_mode_ ? line_count_ : 0;
   }
 
   std::string error;
   std::vector<JournalEntry> entries =
-    client_.read_entries(unit_filter_, max_priority_, requested_line_count, text_filter_, &error);
+    client_.read_entries(
+      unit_filter, namespace_filter, max_priority, requested_line_count, text_filter, &error);
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (entries.empty() && !error.empty()) {
@@ -82,7 +98,13 @@ void JournalViewerBackend::refresh_entries() {
   }
   clamp_selection();
   status_line_ = build_status_line(
-    entries_.size(), unit_filter_, max_priority_, text_filter_, live_mode, requested_line_count <= 0);
+    entries_.size(),
+    unit_filter_,
+    namespace_filter_,
+    max_priority_,
+    text_filter_,
+    live_mode,
+    requested_line_count <= 0);
 }
 
 void JournalViewerBackend::maybe_poll_live_updates() {
@@ -128,6 +150,14 @@ void JournalViewerBackend::set_text_filter(const std::string & filter_text) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     text_filter_ = filter_text;
+  }
+  refresh_entries();
+}
+
+void JournalViewerBackend::set_namespace_filter(const std::string & namespace_filter) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    namespace_filter_ = namespace_filter;
   }
   refresh_entries();
 }

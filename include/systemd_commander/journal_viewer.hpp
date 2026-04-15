@@ -12,7 +12,10 @@
 
 namespace systemd_commander {
 
-int run_journal_viewer_tool(const std::string & initial_unit = "", bool embedded_mode = false);
+int run_journal_viewer_tool(
+  const std::string & initial_unit = "",
+  bool embedded_mode = false,
+  const std::string & initial_namespace = "");
 
 struct JournalDetailRow {
   std::string text;
@@ -23,7 +26,9 @@ class JournalViewerScreen;
 
 class JournalViewerBackend {
 public:
-  explicit JournalViewerBackend(const std::string & initial_unit = "");
+  explicit JournalViewerBackend(
+    const std::string & initial_unit = "",
+    const std::string & initial_namespace = "");
 
 private:
   friend class JournalViewerScreen;
@@ -33,6 +38,7 @@ private:
   void clamp_selection();
   void cycle_priority_filter();
   void set_text_filter(const std::string & filter_text);
+  void set_namespace_filter(const std::string & namespace_filter);
   void toggle_live_mode();
   bool live_mode_enabled() const;
   std::string priority_filter_label() const;
@@ -42,6 +48,7 @@ private:
   JournalClient client_;
   std::vector<JournalEntry> entries_;
   std::string unit_filter_;
+  std::string namespace_filter_;
   std::string text_filter_;
   int max_priority_{6};
   int line_count_{200};
@@ -78,8 +85,9 @@ private:
   tui::SearchState search_state_;
   int detail_scroll_{0};
   bool detail_popup_open_{false};
-  bool filter_prompt_open_{false};
-  std::string filter_buffer_;
+  enum class PromptMode { None, TextFilter, Namespace };
+  PromptMode prompt_mode_{PromptMode::None};
+  std::string prompt_buffer_;
   tui::TerminalPane terminal_pane_;
 };
 

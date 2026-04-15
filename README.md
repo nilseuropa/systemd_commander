@@ -67,6 +67,7 @@ Optional unit preselection:
 ```bash
 ./build/systemd_commander --unit ssh.service
 ./build/journal_viewer --unit ssh.service
+./build/journal_viewer --namespace robot
 ```
 
 ## Interaction Model
@@ -83,7 +84,7 @@ Common keys:
 Tool-specific highlights:
 
 - `systemd_commander`: `F2` start, `F3` stop, `F5` restart, `F6` reload, `F7` edit unit file, `F9` open logs
-- `journal_viewer`: `F2` toggle live/snapshot mode, `F5` cycle priority filter, `F6` text filter
+- `journal_viewer`: `F2` toggle live/snapshot mode, `F5` cycle priority filter, `F6` text filter, `F7` namespace
 
 ## Theme Configuration
 
@@ -103,4 +104,5 @@ At runtime the theme lookup order is:
 
 - The tools rely on local `systemctl` and `journalctl`.
 - Privileged operations are requested on demand instead of requiring the whole UI to run as `root`.
-- `systemd_commander` opens `journal_viewer` in embedded mode for the selected unit on `F9`.
+- `systemd_commander` opens `journal_viewer` in embedded mode for the selected unit on `F9`;
+  if the unit exposes `LogNamespace`, that namespace is applied automatically.

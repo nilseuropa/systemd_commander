@@ -5,6 +5,7 @@
 
 int main(int argc, char ** argv) {
   std::string initial_unit;
+  std::string initial_namespace;
 
   for (int index = 1; index < argc; ++index) {
     const std::string argument = argv[index];
@@ -16,9 +17,17 @@ int main(int argc, char ** argv) {
       initial_unit = argv[++index];
       continue;
     }
+    if (argument == "--namespace") {
+      if (index + 1 >= argc) {
+        std::fprintf(stderr, "journal_viewer: --namespace requires a value\n");
+        return 2;
+      }
+      initial_namespace = argv[++index];
+      continue;
+    }
     std::fprintf(stderr, "journal_viewer: unknown argument '%s'\n", argument.c_str());
     return 2;
   }
 
-  return systemd_commander::run_journal_viewer_tool(initial_unit, false);
+  return systemd_commander::run_journal_viewer_tool(initial_unit, false, initial_namespace);
 }

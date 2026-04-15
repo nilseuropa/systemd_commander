@@ -136,6 +136,24 @@ std::string SystemdCommanderBackend::selected_fragment_path() const {
   return found->second;
 }
 
+std::string SystemdCommanderBackend::selected_log_namespace() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (units_.empty() || selected_index_ < 0 || selected_index_ >= static_cast<int>(units_.size())) {
+    return "";
+  }
+
+  const auto & unit = units_[static_cast<std::size_t>(selected_index_)];
+  if (selected_details_unit_ != unit.name) {
+    return "";
+  }
+
+  const auto found = selected_unit_details_.properties.find("LogNamespace");
+  if (found == selected_unit_details_.properties.end()) {
+    return "";
+  }
+  return found->second;
+}
+
 std::vector<SystemdDetailRow> SystemdCommanderBackend::detail_rows_snapshot() const {
   std::vector<SystemdDetailRow> rows;
 
@@ -171,6 +189,7 @@ std::vector<SystemdDetailRow> SystemdCommanderBackend::detail_rows_snapshot() co
     "ExecMainPID",
     "FragmentPath",
     "ExecStart",
+    "LogNamespace",
   };
   for (const char * key : property_keys) {
     const auto found = selected_unit_details_.properties.find(key);

@@ -27,6 +27,7 @@ class JournalClient {
 public:
   std::vector<JournalEntry> read_entries(
     const std::string & unit_filter,
+    const std::string & namespace_filter,
     int max_priority,
     int line_count,
     const std::string & text_filter,
