@@ -80,6 +80,7 @@ Common keys:
 - `F10`: exit
 - `Enter`: inspect or open the selected item
 - `Esc`: close the current popup or return
+- `Home` / `End`: jump to the first or last item
 - `F4`: refresh
 - `Alt+S`: incremental search
 - `Alt+T`: toggle the embedded terminal pane

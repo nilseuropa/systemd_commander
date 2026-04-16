@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(systemd_commander VERSION 1.2.0 LANGUAGES CXX)
+project(systemd_commander VERSION 1.2.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CTest)

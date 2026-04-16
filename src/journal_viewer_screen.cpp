@@ -428,6 +428,24 @@ bool JournalViewerScreen::handle_entry_list_key(int key) {
         detail_scroll_ = 0;
       }
       return true;
+    case KEY_HOME:
+      {
+        std::lock_guard<std::mutex> lock(backend_->mutex_);
+        backend_->selected_index_ = 0;
+        backend_->entry_scroll_ = 0;
+        backend_->clamp_selection();
+        detail_scroll_ = 0;
+      }
+      return true;
+    case KEY_END:
+      if (!entries.empty()) {
+        std::lock_guard<std::mutex> lock(backend_->mutex_);
+        backend_->selected_index_ = static_cast<int>(entries.size()) - 1;
+        backend_->entry_scroll_ = 0;
+        backend_->clamp_selection();
+        detail_scroll_ = 0;
+      }
+      return true;
     case '\n':
     case KEY_ENTER:
       detail_popup_open_ = !entries.empty();
@@ -464,6 +482,12 @@ bool JournalViewerScreen::handle_detail_popup_key(int key) {
       return true;
     case KEY_NPAGE:
       detail_scroll_ = std::min(max_scroll, detail_scroll_ + page_step());
+      return true;
+    case KEY_HOME:
+      detail_scroll_ = 0;
+      return true;
+    case KEY_END:
+      detail_scroll_ = max_scroll;
       return true;
     case '\n':
     case KEY_ENTER:
@@ -614,15 +638,16 @@ void JournalViewerScreen::draw_help_popup(int rows, int columns) const {
 
   draw_help_item(popup_top + 2, "Up/Down", "move through journal entries");
   draw_help_item(popup_top + 3, "Enter", "open selected entry details");
-  draw_help_item(popup_top + 4, "F2", "toggle live refresh");
-  draw_help_item(popup_top + 5, "F4", "refresh entries");
-  draw_help_item(popup_top + 6, "F5", "cycle priority filter");
-  draw_help_item(popup_top + 7, "F6", "edit text filter");
-  draw_help_item(popup_top + 8, "F7", "choose journal namespace");
-  draw_help_item(popup_top + 9, "Alt+S", "search entries");
-  draw_help_item(popup_top + 10, "Alt+T", "toggle terminal");
-  draw_help_item(popup_top + 11, "F10", "exit");
-  draw_help_item(popup_top + 12, "Esc/F1", "close help");
+  draw_help_item(popup_top + 4, "Home/End", "jump to newest or oldest entry");
+  draw_help_item(popup_top + 5, "F2", "toggle live refresh");
+  draw_help_item(popup_top + 6, "F4", "refresh entries");
+  draw_help_item(popup_top + 7, "F5", "cycle priority filter");
+  draw_help_item(popup_top + 8, "F6", "edit text filter");
+  draw_help_item(popup_top + 9, "F7", "choose journal namespace");
+  draw_help_item(popup_top + 10, "Alt+S", "search entries");
+  draw_help_item(popup_top + 11, "Alt+T", "toggle terminal");
+  draw_help_item(popup_top + 12, "F10", "exit");
+  draw_help_item(popup_top + 13, "Esc/F1", "close help");
 }
 
 void JournalViewerScreen::draw_namespace_picker_popup(int rows, int columns) const {

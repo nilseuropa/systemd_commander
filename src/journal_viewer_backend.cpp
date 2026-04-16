@@ -58,6 +58,7 @@ void JournalViewerBackend::refresh_entries() {
   std::string namespace_filter;
   std::string text_filter;
   bool live_mode = true;
+  bool following_live_head = false;
   int max_priority = 6;
   int requested_line_count = 0;
   {
@@ -69,6 +70,7 @@ void JournalViewerBackend::refresh_entries() {
     namespace_filter = namespace_filter_;
     text_filter = text_filter_;
     live_mode = live_mode_;
+    following_live_head = live_mode_ && selected_index_ == 0 && entry_scroll_ == 0;
     max_priority = max_priority_;
     requested_line_count = live_mode_ ? line_count_ : 0;
   }
@@ -89,7 +91,10 @@ void JournalViewerBackend::refresh_entries() {
 
   entries_ = std::move(entries);
   last_live_refresh_time_ = std::chrono::steady_clock::now();
-  if (!previous_identity.empty()) {
+  if (following_live_head) {
+    selected_index_ = 0;
+    entry_scroll_ = 0;
+  } else if (!previous_identity.empty()) {
     const auto found = std::find_if(
       entries_.begin(), entries_.end(),
       [&previous_identity](const JournalEntry & entry) {
