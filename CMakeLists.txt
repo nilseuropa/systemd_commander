@@ -92,6 +92,10 @@ install(FILES config/tui_theme.yaml
   DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/config
 )
 
+install(FILES LICENSE
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(GTest QUIET)
   if(GTest_FOUND)

@@ -116,3 +116,7 @@ At runtime the theme lookup order is:
   if the unit exposes `LogNamespace`, that namespace is applied automatically.
 - If a unit-filtered journal view has no entries in the default namespace, the status line suggests
   using `F7` or `*` to check other journal namespaces.
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE).
