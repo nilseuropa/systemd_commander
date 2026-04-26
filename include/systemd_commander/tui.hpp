@@ -28,7 +28,8 @@ enum ColorPairId {
   kColorError = 14,
   kColorFatal = 15,
   kColorAccent = 16,
-  kColorHelpKey = 17,
+  kColorDisabled = 17,
+  kColorHelpKey = 18,
 };
 
 constexpr int kThemeColorCount = kColorHelpKey + 1;

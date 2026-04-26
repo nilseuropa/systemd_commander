@@ -193,6 +193,7 @@ bool parse_theme_role(const std::string & value, int * role) {
     {"error", kColorError},
     {"fatal", kColorFatal},
     {"accent", kColorAccent},
+    {"disabled", kColorDisabled},
     {"help_key", kColorHelpKey},
   };
   const auto found = roles.find(to_lower(trim(value)));
@@ -275,6 +276,7 @@ Theme make_default_theme() {
   set_color_role(theme, kColorError, COLOR_RED, -1);
   set_color_role(theme, kColorFatal, COLOR_RED, COLOR_YELLOW);
   set_color_role(theme, kColorAccent, COLOR_CYAN, -1);
+  set_color_role(theme, kColorDisabled, COLOR_WHITE, -1, A_DIM);
   set_color_role(theme, kColorHelpKey, COLOR_BLACK, COLOR_YELLOW, A_BOLD);
   return theme;
 }

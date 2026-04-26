@@ -12,7 +12,13 @@ struct SystemdUnitSummary {
   std::string load_state;
   std::string active_state;
   std::string sub_state;
+  std::string unit_file_state;
   std::string description;
+};
+
+struct SystemdUnitFileSummary {
+  std::string name;
+  std::string unit_file_state;
 };
 
 struct SystemdUnitDetails {
@@ -23,11 +29,13 @@ struct SystemdUnitDetails {
 };
 
 std::vector<SystemdUnitSummary> parse_systemd_list_units_output(const std::string & text);
+std::vector<SystemdUnitFileSummary> parse_systemd_list_unit_files_output(const std::string & text);
 SystemdUnitDetails parse_systemd_show_output(const std::string & text);
 
 class SystemdClient {
 public:
   std::vector<SystemdUnitSummary> list_service_units(std::string * error = nullptr) const;
+  std::vector<SystemdUnitFileSummary> list_service_unit_files(std::string * error = nullptr) const;
   bool show_unit_details(
     const std::string & unit_name,
     SystemdUnitDetails & details,

@@ -36,6 +36,7 @@ enum ColorPairId {
   kColorDirty = tui::kColorDirty,
   kColorWarn = tui::kColorWarn,
   kColorError = tui::kColorError,
+  kColorDisabled = tui::kColorDisabled,
 };
 
 using tui::Session;
@@ -65,14 +66,17 @@ int unit_state_color(const SystemdUnitSummary & unit, bool selected) {
   if (selected) {
     return kColorSelection;
   }
+  if (unit.active_state == "failed") {
+    return kColorError;
+  }
+  if (unit.unit_file_state == "disabled") {
+    return kColorDisabled;
+  }
   if (unit.active_state == "active" && unit.sub_state == "running") {
     return kColorPositive;
   }
   if (unit.active_state == "active" && unit.sub_state == "exited") {
     return kColorWarn;
-  }
-  if (unit.active_state == "failed") {
-    return kColorError;
   }
   if (unit.active_state == "activating" || unit.active_state == "reloading") {
     return kColorWarn;
@@ -182,6 +186,8 @@ int SystemdCommanderScreen::run() {
     timeout(100);
   }
 
+  backend_->refresh_unit_file_states_async();
+
   bool running = true;
   while (running) {
     terminal_pane_.update();
@@ -257,17 +263,13 @@ bool SystemdCommanderScreen::handle_key(int key) {
         detail_scroll_ = 0;
         return perform_selected_unit_action("stop");
       case KEY_F(4):
-        detail_scroll_ = 0;
-        backend_->refresh_units();
-        return true;
+        return open_selected_service_editor();
       case KEY_F(5):
         detail_scroll_ = 0;
         return perform_selected_unit_action("restart");
       case KEY_F(6):
         detail_scroll_ = 0;
         return perform_selected_unit_action("reload");
-      case KEY_F(7):
-        return open_selected_service_editor();
       case KEY_F(9):
         return launch_selected_logs();
       default:
@@ -287,6 +289,7 @@ bool SystemdCommanderScreen::handle_key(int key) {
     case KEY_F(4):
       detail_scroll_ = 0;
       backend_->refresh_units();
+      backend_->refresh_unit_file_states_async();
       return true;
     case KEY_F(5):
       detail_scroll_ = 0;
@@ -294,6 +297,12 @@ bool SystemdCommanderScreen::handle_key(int key) {
     case KEY_F(6):
       detail_scroll_ = 0;
       return perform_selected_unit_action("reload");
+    case KEY_F(7):
+      detail_scroll_ = 0;
+      return perform_selected_unit_action("enable");
+    case KEY_F(8):
+      detail_scroll_ = 0;
+      return perform_selected_unit_action("disable");
     case KEY_F(9):
       return launch_selected_logs();
     case '\n':
@@ -349,7 +358,8 @@ bool SystemdCommanderScreen::handle_search_key(int key) {
   for (const auto & unit : units) {
     labels.push_back(
       unit.name + " " + unit.description + " " +
-      unit.load_state + " " + unit.active_state + " " + unit.sub_state);
+      unit.load_state + " " + unit.active_state + " " + unit.sub_state + " " +
+      unit.unit_file_state);
   }
 
   const int match = find_best_match(labels, search_state_.query, current_index);
@@ -672,6 +682,7 @@ bool SystemdCommanderScreen::perform_selected_unit_action(const std::string & ac
   if (backend_->client_.execute_unit_action(unit_name, action, &error)) {
     backend_->refresh_units();
     backend_->refresh_selected_unit_details();
+    backend_->refresh_unit_file_states_async();
     std::lock_guard<std::mutex> lock(backend_->mutex_);
     backend_->status_line_ = "Ran `" + action + "` for " + unit_name + ".";
     return true;
@@ -694,6 +705,7 @@ bool SystemdCommanderScreen::perform_selected_unit_action(const std::string & ac
 
   backend_->refresh_units();
   backend_->refresh_selected_unit_details();
+  backend_->refresh_unit_file_states_async();
   std::lock_guard<std::mutex> lock(backend_->mutex_);
   backend_->status_line_ = "Ran `" + action + "` for " + unit_name + " via sudo.";
   return true;
@@ -971,8 +983,11 @@ void SystemdCommanderScreen::draw_unit_list(int top, int left, int bottom, int r
   for (int index = first_row; index < last_row && row_y <= bottom; ++index, ++row_y) {
     const auto & unit = units[static_cast<std::size_t>(index)];
     const bool selected = index == selected_index;
+    const std::string install_state =
+      unit.unit_file_state.empty() ? "" : (" " + unit.unit_file_state);
     const std::string text =
-      unit.name + "  [" + unit.active_state + "/" + unit.sub_state + "] " + unit.description;
+      unit.name + "  [" + unit.active_state + "/" + unit.sub_state + install_state + "] " +
+      unit.description;
     mvhline(row_y, left, ' ', width);
     mvaddnstr(row_y, left, truncate_text(text, width).c_str(), width);
     const int color = unit_state_color(unit, selected);
@@ -987,7 +1002,7 @@ void SystemdCommanderScreen::draw_unit_list(int top, int left, int bottom, int r
 }
 
 void SystemdCommanderScreen::draw_help_popup(int rows, int columns) const {
-  const int popup_height = 16;
+  const int popup_height = 17;
   if (rows < popup_height || columns < 36) {
     return;
   }
@@ -1026,17 +1041,18 @@ void SystemdCommanderScreen::draw_help_popup(int rows, int columns) const {
 
   draw_help_item(popup_top + 2, "Up/Down", "move through service units");
   draw_help_item(popup_top + 3, "Enter", "open selected service details");
-  draw_help_item(popup_top + 4, "F2", "start selected service");
-  draw_help_item(popup_top + 5, "F3", "stop selected service");
-  draw_help_item(popup_top + 6, "F4", "refresh service list");
-  draw_help_item(popup_top + 7, "F5", "restart selected service");
-  draw_help_item(popup_top + 8, "F6", "reload selected service");
-  draw_help_item(popup_top + 9, "F7", "edit selected unit file from details");
-  draw_help_item(popup_top + 10, "F9", "open logs for selected service");
-  draw_help_item(popup_top + 11, "Alt+S", "search service list");
-  draw_help_item(popup_top + 12, "Alt+T", "toggle terminal");
-  draw_help_item(popup_top + 13, "F10", "exit");
-  draw_help_item(popup_top + 14, "Esc/F1", "close help");
+  draw_help_item(popup_top + 4, "Alt+S", "search service list");
+  draw_help_item(popup_top + 5, "Alt+T", "toggle terminal");
+  draw_help_item(popup_top + 6, "Esc/F1", "close help");
+  draw_help_item(popup_top + 7, "F2", "start selected service");
+  draw_help_item(popup_top + 8, "F3", "stop selected service");
+  draw_help_item(popup_top + 9, "F4", "refresh service list");
+  draw_help_item(popup_top + 10,"F5", "restart selected service");
+  draw_help_item(popup_top + 11,"F6", "reload selected service");
+  draw_help_item(popup_top + 12,"F7", "enable selected service");
+  draw_help_item(popup_top + 13,"F8", "disable selected service");
+  draw_help_item(popup_top + 14,"F9", "open logs for selected service");
+  draw_help_item(popup_top + 15,"F10", "exit");
 }
 
 void SystemdCommanderScreen::draw_detail_popup(int rows, int columns) {
@@ -1091,7 +1107,7 @@ void SystemdCommanderScreen::draw_detail_popup(int rows, int columns) {
     help_row,
     left + 1,
     box_width - 2,
-    "F2 Start  F3 Stop  F5 Restart  F6 Reload  F7 Edit  F9 Logs  Esc Close");
+    "F2 Start  F3 Stop  F4 Edit  F5 Restart  F6 Reload  F9 Logs  Esc Close");
 }
 
 void SystemdCommanderScreen::draw_editor(int top, int left, int bottom, int right) {
@@ -1213,7 +1229,7 @@ void SystemdCommanderScreen::draw_help_line(int row, int columns) const {
     row,
     columns,
     tui::with_terminal_help(
-      "F1 Help  Enter Details  F2 Start  F3 Stop  F4 Refresh  F5 Restart  F6 Reload  F9 Logs  Alt+S Search  F10 Exit",
+      "F1 Help  F2 Start  F3 Stop  F4 Refresh  F5 Restart  F6 Reload  F7 Enable  F8 Disable  F9 Logs  F10 Exit",
       terminal_pane_.visible()));
 }
 

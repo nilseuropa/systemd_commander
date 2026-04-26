@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "systemd_commander/process_runner.hpp"
@@ -24,11 +25,13 @@ class SystemdCommanderScreen;
 class SystemdCommanderBackend {
 public:
   explicit SystemdCommanderBackend(const std::string & initial_unit = "");
+  ~SystemdCommanderBackend();
 
 private:
   friend class SystemdCommanderScreen;
 
   void refresh_units();
+  void refresh_unit_file_states_async();
   void refresh_selected_unit_details();
   void clamp_selection();
   std::string selected_unit_name() const;
@@ -40,11 +43,14 @@ private:
   mutable std::mutex mutex_;
   SystemdClient client_;
   std::vector<SystemdUnitSummary> units_;
+  std::vector<SystemdUnitFileSummary> unit_files_;
   SystemdUnitDetails selected_unit_details_;
   std::string selected_details_unit_;
   std::string initial_unit_;
   int selected_index_{0};
   int unit_scroll_{0};
+  bool unit_file_refresh_running_{false};
+  std::thread unit_file_refresh_thread_;
   std::string status_line_{"Loading services..."};
 };
 

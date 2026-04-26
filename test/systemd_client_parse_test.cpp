@@ -27,6 +27,26 @@ TEST(SystemdClientParseTest, ParsesServiceListOutput) {
   EXPECT_EQ(units[2].sub_state, "failed");
 }
 
+TEST(SystemdClientParseTest, ParsesServiceUnitFileListOutput) {
+  const std::string output =
+    "dbus.service enabled enabled\n"
+    "ssh.service disabled enabled\n"
+    "dbus-org.freedesktop.resolve1.service alias -\n"
+    "static-helper.service static -\n";
+
+  const auto unit_files = parse_systemd_list_unit_files_output(output);
+  ASSERT_EQ(unit_files.size(), 4u);
+
+  EXPECT_EQ(unit_files[0].name, "dbus.service");
+  EXPECT_EQ(unit_files[0].unit_file_state, "enabled");
+
+  EXPECT_EQ(unit_files[1].name, "ssh.service");
+  EXPECT_EQ(unit_files[1].unit_file_state, "disabled");
+
+  EXPECT_EQ(unit_files[2].name, "dbus-org.freedesktop.resolve1.service");
+  EXPECT_EQ(unit_files[2].unit_file_state, "alias");
+}
+
 TEST(SystemdClientParseTest, ParsesShowPropertiesAndActions) {
   const std::string output =
     "Id=ssh.service\n"

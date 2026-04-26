@@ -1,14 +1,74 @@
 #include "systemd_commander/systemd_commander.hpp"
 
 #include <algorithm>
+#include <map>
 
 namespace systemd_commander {
+
+namespace {
+
+void merge_unit_file_states(
+  std::vector<SystemdUnitSummary> & units,
+  const std::vector<SystemdUnitFileSummary> & unit_files)
+{
+  std::map<std::string, std::size_t> indexes;
+  for (std::size_t index = 0; index < units.size(); ++index) {
+    indexes[units[index].name] = index;
+  }
+
+  for (const auto & unit_file : unit_files) {
+    if (unit_file.name.empty()) {
+      continue;
+    }
+
+    const auto found = indexes.find(unit_file.name);
+    if (found != indexes.end()) {
+      units[found->second].unit_file_state = unit_file.unit_file_state;
+      continue;
+    }
+
+    SystemdUnitSummary unit;
+    unit.name = unit_file.name;
+    unit.load_state = "unit-file";
+    unit.active_state = "inactive";
+    unit.sub_state = "dead";
+    unit.unit_file_state = unit_file.unit_file_state;
+    units.push_back(std::move(unit));
+    indexes[units.back().name] = units.size() - 1;
+  }
+
+  std::sort(
+    units.begin(), units.end(),
+    [](const SystemdUnitSummary & lhs, const SystemdUnitSummary & rhs) {
+      return lhs.name < rhs.name;
+    });
+}
+
+int find_unit_index(const std::vector<SystemdUnitSummary> & units, const std::string & unit_name) {
+  const auto found = std::find_if(
+    units.begin(), units.end(),
+    [&unit_name](const SystemdUnitSummary & unit) {
+      return unit.name == unit_name;
+    });
+  if (found == units.end()) {
+    return -1;
+  }
+  return static_cast<int>(std::distance(units.begin(), found));
+}
+
+}  // namespace
 
 SystemdCommanderBackend::SystemdCommanderBackend(const std::string & initial_unit)
 : initial_unit_(initial_unit) {
   std::string theme_error;
   (void)tui::load_theme_from_file(tui::default_theme_config_path(), &theme_error);
   refresh_units();
+}
+
+SystemdCommanderBackend::~SystemdCommanderBackend() {
+  if (unit_file_refresh_thread_.joinable()) {
+    unit_file_refresh_thread_.join();
+  }
 }
 
 void SystemdCommanderBackend::refresh_units() {
@@ -35,16 +95,13 @@ void SystemdCommanderBackend::refresh_units() {
       return;
     }
 
+    merge_unit_file_states(units, unit_files_);
     units_ = std::move(units);
     const std::string preferred_selection = !initial_unit_.empty() ? initial_unit_ : previous_selection;
     if (!preferred_selection.empty()) {
-      const auto found = std::find_if(
-        units_.begin(), units_.end(),
-        [&preferred_selection](const SystemdUnitSummary & unit) {
-          return unit.name == preferred_selection;
-        });
-      if (found != units_.end()) {
-        selected_index_ = static_cast<int>(std::distance(units_.begin(), found));
+      const int found_index = find_unit_index(units_, preferred_selection);
+      if (found_index >= 0) {
+        selected_index_ = found_index;
       }
     }
 
@@ -61,6 +118,57 @@ void SystemdCommanderBackend::refresh_units() {
   }
 
   refresh_selected_unit_details();
+}
+
+void SystemdCommanderBackend::refresh_unit_file_states_async() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (unit_file_refresh_running_) {
+      return;
+    }
+  }
+
+  if (unit_file_refresh_thread_.joinable()) {
+    unit_file_refresh_thread_.join();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (unit_file_refresh_running_) {
+      return;
+    }
+    unit_file_refresh_running_ = true;
+  }
+
+  unit_file_refresh_thread_ = std::thread(
+    [this]() {
+      std::string error;
+      std::vector<SystemdUnitFileSummary> unit_files = client_.list_service_unit_files(&error);
+
+      std::lock_guard<std::mutex> lock(mutex_);
+      unit_file_refresh_running_ = false;
+      if (unit_files.empty() && !error.empty()) {
+        status_line_ = error;
+        return;
+      }
+
+      std::string selected_unit;
+      if (!units_.empty() && selected_index_ >= 0 && selected_index_ < static_cast<int>(units_.size())) {
+        selected_unit = units_[static_cast<std::size_t>(selected_index_)].name;
+      }
+
+      unit_files_ = std::move(unit_files);
+      merge_unit_file_states(units_, unit_files_);
+      if (!selected_unit.empty()) {
+        const int found_index = find_unit_index(units_, selected_unit);
+        if (found_index >= 0) {
+          selected_index_ = found_index;
+        }
+      }
+      clamp_selection();
+      status_line_ =
+        "Loaded " + std::to_string(units_.size()) + " service units with unit-file states.";
+    });
 }
 
 void SystemdCommanderBackend::refresh_selected_unit_details() {
@@ -96,6 +204,18 @@ void SystemdCommanderBackend::refresh_selected_unit_details() {
 
   selected_unit_details_ = std::move(details);
   selected_details_unit_ = unit_name;
+  auto & unit = units_[static_cast<std::size_t>(selected_index_)];
+  const auto update_field = [&](const std::string & property, std::string & field) {
+    const auto found = selected_unit_details_.properties.find(property);
+    if (found != selected_unit_details_.properties.end() && !found->second.empty()) {
+      field = found->second;
+    }
+  };
+  update_field("Description", unit.description);
+  update_field("LoadState", unit.load_state);
+  update_field("ActiveState", unit.active_state);
+  update_field("SubState", unit.sub_state);
+  update_field("UnitFileState", unit.unit_file_state);
   status_line_ = "Loaded details for " + unit_name + ".";
 }
 
@@ -170,6 +290,9 @@ std::vector<SystemdDetailRow> SystemdCommanderBackend::detail_rows_snapshot() co
   rows.push_back({"Load: " + unit.load_state, false});
   rows.push_back({"Active: " + unit.active_state, false});
   rows.push_back({"Sub: " + unit.sub_state, false});
+  if (!unit.unit_file_state.empty()) {
+    rows.push_back({"UnitFileState: " + unit.unit_file_state, false});
+  }
 
   if (selected_details_unit_ != unit.name || selected_unit_details_.properties.empty()) {
     rows.push_back({"Details", true});

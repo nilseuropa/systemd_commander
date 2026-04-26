@@ -87,7 +87,7 @@ Common keys:
 
 Tool-specific highlights:
 
-- `systemd_commander`: `F2` start, `F3` stop, `F5` restart, `F6` reload, `F7` edit unit file from details, `F9` open logs
+- `systemd_commander`: `F2` start, `F3` stop, `F5` restart, `F6` reload, `F7` enable, `F8` disable, `F9` open logs. In service details, `F4` edits the unit file.
 - `journal_viewer`: `F2` toggle live/snapshot mode, `F5` cycle priority filter, `F6` text filter, `F7` namespace picker
 
 The journal namespace picker includes the default namespace, `*` for all namespaces, and

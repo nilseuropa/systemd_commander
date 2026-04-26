@@ -55,6 +55,26 @@ std::vector<SystemdUnitSummary> parse_systemd_list_units_output(const std::strin
   return units;
 }
 
+std::vector<SystemdUnitFileSummary> parse_systemd_list_unit_files_output(const std::string & text) {
+  std::vector<SystemdUnitFileSummary> unit_files;
+  std::istringstream stream(text);
+  std::string line;
+  while (std::getline(stream, line)) {
+    line = trim(line);
+    if (line.empty()) {
+      continue;
+    }
+
+    std::istringstream line_stream(line);
+    SystemdUnitFileSummary unit_file;
+    if (!(line_stream >> unit_file.name >> unit_file.unit_file_state)) {
+      continue;
+    }
+    unit_files.push_back(unit_file);
+  }
+  return unit_files;
+}
+
 SystemdUnitDetails parse_systemd_show_output(const std::string & text) {
   SystemdUnitDetails details;
   std::istringstream stream(text);
@@ -96,6 +116,23 @@ std::vector<SystemdUnitSummary> SystemdClient::list_service_units(std::string * 
     return {};
   }
   return parse_systemd_list_units_output(result.output);
+}
+
+std::vector<SystemdUnitFileSummary> SystemdClient::list_service_unit_files(std::string * error) const {
+  const ProcessResult result = run_process({
+      "systemctl",
+      "list-unit-files",
+      "--type=service",
+      "--no-legend",
+      "--no-pager",
+      "--full"});
+  if (!result.succeeded()) {
+    if (error != nullptr) {
+      *error = result.output.empty() ? "systemctl list-unit-files failed." : trim(result.output);
+    }
+    return {};
+  }
+  return parse_systemd_list_unit_files_output(result.output);
 }
 
 bool SystemdClient::show_unit_details(

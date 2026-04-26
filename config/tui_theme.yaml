@@ -63,6 +63,10 @@ tui_theme:
     foreground: cyan
     background: default
     attributes: []
+  disabled:
+    foreground: white
+    background: default
+    attributes: [dim]
   help_key:
     foreground: black
     background: yellow
