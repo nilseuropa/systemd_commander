@@ -33,6 +33,7 @@ enum ColorPairId {
   kColorPositive = tui::kColorPositive,
   kColorAccent = tui::kColorAccent,
   kColorPopup = tui::kColorPopup,
+  kColorDirty = tui::kColorDirty,
   kColorWarn = tui::kColorWarn,
   kColorError = tui::kColorError,
 };
@@ -902,7 +903,8 @@ void SystemdCommanderScreen::draw() {
   const int content_bottom = layout.content_bottom;
   editor_cursor_visible_ = false;
 
-  draw_box(0, 0, content_bottom, columns - 1, kColorFrame);
+  const int frame_color = editor_open_ && editor_dirty_ ? kColorDirty : kColorFrame;
+  draw_box(0, 0, content_bottom, columns - 1, frame_color);
   attron(theme_attr(kColorTitle));
   mvprintw(0, 1, "Systemd Commander ");
   attroff(theme_attr(kColorTitle));
