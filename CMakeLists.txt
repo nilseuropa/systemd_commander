@@ -112,5 +112,12 @@ if(BUILD_TESTING)
       systemd_commander_common
     )
     add_test(NAME journal_client_parse_test COMMAND journal_client_parse_test)
+
+    add_executable(tui_test test/tui_test.cpp)
+    target_link_libraries(tui_test PRIVATE
+      GTest::gtest_main
+      systemd_commander_tui
+    )
+    add_test(NAME tui_test COMMAND tui_test)
   endif()
 endif()

@@ -78,7 +78,7 @@ private:
   void draw();
   void draw_entry_list(int top, int left, int bottom, int right);
   void draw_help_popup(int rows, int columns) const;
-  void draw_namespace_picker_popup(int rows, int columns) const;
+  void draw_namespace_picker_popup(int rows, int columns);
   void draw_detail_popup(int rows, int columns);
   void draw_filter_popup(int rows, int columns) const;
   void draw_status_line(int row, int columns) const;
@@ -93,6 +93,7 @@ private:
   bool help_popup_open_{false};
   bool namespace_picker_open_{false};
   int namespace_picker_selected_index_{0};
+  int namespace_picker_scroll_{0};
   std::vector<std::string> namespace_options_;
   enum class PromptMode { None, TextFilter, Namespace };
   PromptMode prompt_mode_{PromptMode::None};

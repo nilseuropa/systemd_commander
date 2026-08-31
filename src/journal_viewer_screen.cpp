@@ -230,6 +230,7 @@ bool JournalViewerScreen::handle_key(int key) {
         std::string error;
         namespace_options_ = backend_->namespace_options_snapshot(&error);
         namespace_picker_selected_index_ = 0;
+        namespace_picker_scroll_ = 0;
         const auto found = std::find(namespace_options_.begin(), namespace_options_.end(), prompt_buffer_);
         if (found != namespace_options_.end()) {
           namespace_picker_selected_index_ =
@@ -512,6 +513,11 @@ void JournalViewerScreen::draw() {
   int rows = 0;
   int columns = 0;
   getmaxyx(stdscr, rows, columns);
+  if (!tui::terminal_size_supported(rows, columns)) {
+    tui::draw_terminal_size_warning(rows, columns);
+    refresh();
+    return;
+  }
   const auto layout = tui::make_commander_layout(rows, terminal_pane_.visible());
   const int help_row = layout.help_row;
   const int status_row = layout.status_row;
@@ -557,12 +563,8 @@ void JournalViewerScreen::draw_entry_list(int top, int left, int bottom, int rig
 
   const int width = right - left + 1;
   const int visible_rows = std::max(1, bottom - top);
-  if (selected_index < scroll) {
-    scroll = selected_index;
-  }
-  if (selected_index >= scroll + visible_rows) {
-    scroll = std::max(0, selected_index - visible_rows + 1);
-  }
+  scroll = tui::update_scroll_offset_for_selection(
+    selected_index, scroll, visible_rows);
   {
     std::lock_guard<std::mutex> lock(backend_->mutex_);
     backend_->entry_scroll_ = scroll;
@@ -650,7 +652,7 @@ void JournalViewerScreen::draw_help_popup(int rows, int columns) const {
   draw_help_item(popup_top + 13, "Esc/F1", "close help");
 }
 
-void JournalViewerScreen::draw_namespace_picker_popup(int rows, int columns) const {
+void JournalViewerScreen::draw_namespace_picker_popup(int rows, int columns) {
   if (rows < 9 || columns < 36) {
     return;
   }
@@ -682,10 +684,9 @@ void JournalViewerScreen::draw_namespace_picker_popup(int rows, int columns) con
 
   const int option_top = popup_top + 1;
   const int option_rows = std::max(1, popup_height - 4);
-  int first_option = 0;
-  if (namespace_picker_selected_index_ >= option_rows) {
-    first_option = namespace_picker_selected_index_ - option_rows + 1;
-  }
+  namespace_picker_scroll_ = tui::update_scroll_offset_for_selection(
+    namespace_picker_selected_index_, namespace_picker_scroll_, option_rows);
+  const int first_option = namespace_picker_scroll_;
   const int last_option = std::min(
     static_cast<int>(namespace_options_.size()), first_option + option_rows);
   int row_y = option_top;

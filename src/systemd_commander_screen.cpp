@@ -482,6 +482,13 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
     editor_lines_.push_back("");
   }
 
+  const int previous_cursor_row = editor_cursor_row_;
+  const auto remember_previous_cursor_row_if_changed = [&]() {
+    if (editor_cursor_row_ != previous_cursor_row) {
+      editor_previous_cursor_row_ = previous_cursor_row;
+    }
+  };
+
   auto clamp_cursor = [&]() {
     editor_cursor_row_ = std::clamp(editor_cursor_row_, 0, static_cast<int>(editor_lines_.size()) - 1);
     editor_cursor_column_ = std::clamp(
@@ -501,12 +508,14 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
         --editor_cursor_row_;
       }
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case KEY_DOWN:
       if (editor_cursor_row_ + 1 < static_cast<int>(editor_lines_.size())) {
         ++editor_cursor_row_;
       }
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case KEY_LEFT:
       if (editor_cursor_column_ > 0) {
@@ -516,6 +525,7 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
         editor_cursor_column_ = static_cast<int>(editor_lines_[static_cast<std::size_t>(editor_cursor_row_)].size());
       }
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case KEY_RIGHT:
       if (editor_cursor_column_ <
@@ -527,6 +537,7 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
         editor_cursor_column_ = 0;
       }
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case KEY_HOME:
       editor_cursor_column_ = 0;
@@ -538,11 +549,13 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
     case KEY_PPAGE:
       editor_cursor_row_ = std::max(0, editor_cursor_row_ - page_step());
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case KEY_NPAGE:
       editor_cursor_row_ = std::min(
         static_cast<int>(editor_lines_.size()) - 1, editor_cursor_row_ + page_step());
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case KEY_BACKSPACE:
     case 127:
@@ -562,6 +575,7 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
         editor_dirty_ = true;
       }
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case KEY_DC:
       {
@@ -576,6 +590,7 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
         }
       }
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case '\n':
     case KEY_ENTER:
@@ -589,6 +604,7 @@ bool SystemdCommanderScreen::handle_editor_key(int key) {
         editor_dirty_ = true;
       }
       clamp_cursor();
+      remember_previous_cursor_row_if_changed();
       return true;
     case '\t':
       editor_lines_[static_cast<std::size_t>(editor_cursor_row_)].insert(
@@ -775,6 +791,7 @@ bool SystemdCommanderScreen::open_selected_service_editor() {
   editor_path_ = fragment_path;
   editor_cursor_row_ = 0;
   editor_cursor_column_ = 0;
+  editor_previous_cursor_row_ = -1;
   editor_scroll_row_ = 0;
   editor_scroll_column_ = 0;
   editor_dirty_ = false;
@@ -888,6 +905,7 @@ void SystemdCommanderScreen::close_editor() {
   editor_lines_.clear();
   editor_cursor_row_ = 0;
   editor_cursor_column_ = 0;
+  editor_previous_cursor_row_ = -1;
   editor_scroll_row_ = 0;
   editor_scroll_column_ = 0;
   detail_popup_open_ = editor_return_to_detail_popup_;
@@ -909,6 +927,11 @@ void SystemdCommanderScreen::draw() {
   int rows = 0;
   int columns = 0;
   getmaxyx(stdscr, rows, columns);
+  if (!tui::terminal_size_supported(rows, columns)) {
+    tui::draw_terminal_size_warning(rows, columns);
+    refresh();
+    return;
+  }
   const auto layout = tui::make_commander_layout(rows, terminal_pane_.visible());
   const int help_row = layout.help_row;
   const int status_row = layout.status_row;
@@ -962,12 +985,8 @@ void SystemdCommanderScreen::draw_unit_list(int top, int left, int bottom, int r
 
   const int width = right - left + 1;
   const int visible_rows = std::max(1, bottom - top);
-  if (selected_index < scroll) {
-    scroll = selected_index;
-  }
-  if (selected_index >= scroll + visible_rows) {
-    scroll = std::max(0, selected_index - visible_rows + 1);
-  }
+  scroll = tui::scroll_offset_for_selection(
+    selected_index, scroll, visible_rows);
   {
     std::lock_guard<std::mutex> lock(backend_->mutex_);
     backend_->unit_scroll_ = scroll;
@@ -999,6 +1018,23 @@ void SystemdCommanderScreen::draw_unit_list(int top, int left, int bottom, int r
   for (; row_y <= bottom; ++row_y) {
     mvhline(row_y, left, ' ', width);
   }
+
+  if (last_drawn_unit_scroll_ >= 0) {
+    if (scroll != last_drawn_unit_scroll_) {
+      wredrawln(stdscr, top + 1, visible_rows);
+    } else if (selected_index != last_drawn_unit_selected_index_) {
+      const auto redraw_unit_row = [&](int unit_index) {
+        const int screen_row = top + 1 + unit_index - scroll;
+        if (screen_row >= top + 1 && screen_row <= bottom) {
+          wredrawln(stdscr, screen_row, 1);
+        }
+      };
+      redraw_unit_row(last_drawn_unit_selected_index_);
+      redraw_unit_row(selected_index);
+    }
+  }
+  last_drawn_unit_selected_index_ = selected_index;
+  last_drawn_unit_scroll_ = scroll;
 }
 
 void SystemdCommanderScreen::draw_help_popup(int rows, int columns) const {
@@ -1127,12 +1163,8 @@ void SystemdCommanderScreen::draw_editor(int top, int left, int bottom, int righ
     editor_cursor_column_, 0,
     static_cast<int>(editor_lines_[static_cast<std::size_t>(editor_cursor_row_)].size()));
 
-  if (editor_cursor_row_ < editor_scroll_row_) {
-    editor_scroll_row_ = editor_cursor_row_;
-  }
-  if (editor_cursor_row_ >= editor_scroll_row_ + visible_rows) {
-    editor_scroll_row_ = editor_cursor_row_ - visible_rows + 1;
-  }
+  editor_scroll_row_ = tui::update_scroll_offset_for_selection(
+    editor_cursor_row_, editor_scroll_row_, visible_rows);
   if (editor_cursor_column_ < editor_scroll_column_) {
     editor_scroll_column_ = editor_cursor_column_;
   }
@@ -1185,6 +1217,18 @@ void SystemdCommanderScreen::draw_editor(int top, int left, int bottom, int righ
       column += static_cast<int>(text.size());
       drawn += static_cast<int>(text.size());
     }
+  }
+
+  if (editor_previous_cursor_row_ >= 0) {
+    const auto redraw_editor_row = [&](int line_index) {
+      const int screen_row = top + 1 + line_index - editor_scroll_row_;
+      if (screen_row >= top + 1 && screen_row <= bottom) {
+        wredrawln(stdscr, screen_row, 1);
+      }
+    };
+    redraw_editor_row(editor_previous_cursor_row_);
+    redraw_editor_row(editor_cursor_row_);
+    editor_previous_cursor_row_ = -1;
   }
 
   const int cursor_screen_row = top + 1 + (editor_cursor_row_ - editor_scroll_row_);

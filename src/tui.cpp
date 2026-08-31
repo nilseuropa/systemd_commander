@@ -1222,6 +1222,59 @@ std::string with_terminal_help(const std::string & text, bool terminal_visible) 
   return text.empty() ? suffix : (text + "  " + suffix);
 }
 
+bool terminal_size_supported(int rows, int columns) {
+  return rows >= kMinimumTerminalRows && columns >= kMinimumTerminalColumns;
+}
+
+int scroll_offset_for_selection(
+  int selected_index, int current_scroll, int visible_item_rows)
+{
+  const int selected = std::max(0, selected_index);
+  const int scroll = std::max(0, current_scroll);
+  const int item_rows = std::max(1, visible_item_rows);
+  if (selected < scroll) {
+    return selected;
+  }
+  if (selected >= scroll + item_rows) {
+    return selected - item_rows + 1;
+  }
+  return scroll;
+}
+
+int update_scroll_offset_for_selection(
+  int selected_index, int current_scroll, int visible_item_rows)
+{
+  const int updated_scroll =
+    scroll_offset_for_selection(selected_index, current_scroll, visible_item_rows);
+  if (updated_scroll != current_scroll && stdscr != nullptr) {
+    clearok(stdscr, TRUE);
+  }
+  return updated_scroll;
+}
+
+void draw_terminal_size_warning(int rows, int columns) {
+  curs_set(0);
+  const std::string title = "Terminal too small";
+  const std::string requirement =
+    "Need " + std::to_string(kMinimumTerminalColumns) + "x" +
+    std::to_string(kMinimumTerminalRows) + "; current " +
+    std::to_string(columns) + "x" + std::to_string(rows);
+
+  const auto draw_centered = [columns](int row, const std::string & text) {
+    if (row < 0 || columns <= 0) {
+      return;
+    }
+    const int width = std::min(columns, static_cast<int>(text.size()));
+    const int left = std::max(0, (columns - width) / 2);
+    mvaddnstr(row, left, text.c_str(), width);
+  };
+
+  draw_centered(std::max(0, rows / 2 - 1), title);
+  if (rows > 1) {
+    draw_centered(std::min(rows - 1, rows / 2 + 1), requirement);
+  }
+}
+
 std::string truncate_text(const std::string & text, int width) {
   if (width <= 0) {
     return "";

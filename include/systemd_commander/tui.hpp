@@ -4,6 +4,7 @@
 #include <ncursesw/ncurses.h>
 
 #include <array>
+#include <cstddef>
 #include <deque>
 #include <string>
 #include <sys/types.h>
@@ -33,6 +34,8 @@ enum ColorPairId {
 };
 
 constexpr int kThemeColorCount = kColorHelpKey + 1;
+constexpr int kMinimumTerminalRows = 18;
+constexpr int kMinimumTerminalColumns = 40;
 
 struct ThemeColor {
   short foreground{-1};
@@ -168,6 +171,12 @@ SearchInputResult handle_search_input(SearchState & state, int key);
 int find_best_match(const std::vector<std::string> & labels, const std::string & query, int current_index);
 CommanderLayout make_commander_layout(int rows, bool terminal_visible);
 std::string with_terminal_help(const std::string & text, bool terminal_visible);
+bool terminal_size_supported(int rows, int columns);
+void draw_terminal_size_warning(int rows, int columns);
+int scroll_offset_for_selection(
+  int selected_index, int current_scroll, int visible_item_rows);
+int update_scroll_offset_for_selection(
+  int selected_index, int current_scroll, int visible_item_rows);
 
 std::string truncate_text(const std::string & text, int width);
 

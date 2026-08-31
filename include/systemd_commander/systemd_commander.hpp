@@ -89,6 +89,8 @@ private:
   std::shared_ptr<SystemdCommanderBackend> backend_;
   bool embedded_mode_{false};
   tui::SearchState search_state_;
+  int last_drawn_unit_selected_index_{-1};
+  int last_drawn_unit_scroll_{-1};
   bool editor_open_{false};
   bool editor_dirty_{false};
   bool editor_return_to_detail_popup_{false};
@@ -99,6 +101,7 @@ private:
   int editor_cursor_screen_column_{0};
   int editor_cursor_row_{0};
   int editor_cursor_column_{0};
+  int editor_previous_cursor_row_{-1};
   int editor_scroll_row_{0};
   int editor_scroll_column_{0};
   int detail_scroll_{0};
